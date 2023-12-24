@@ -43,12 +43,28 @@ sys_sbrk(void)
 {
   int addr;
   int n;
+  struct proc *p;
 
   if(argint(0, &n) < 0)
     return -1;
-  addr = myproc()->sz;
-  if(growproc(n) < 0)
+
+  p = myproc();
+  addr = p->sz;
+
+  //myproc()->sz += n;  // increase size without allocating memory
+  //prevent addr + n < 0 address overflow
+  if(n >= 0 && addr + n >= addr){
+    p->sz += n;    // increase size without allocating memory
+  } else if(n < 0 && addr + n >= PGROUNDUP(p->trapframe->sp)){  
+    // nagative parameters and address not out of bounds
+    //  dealloc memory
+    p->sz = uvmdealloc(p->pagetable, addr, addr + n);
+  } else {
     return -1;
+  }
+
+  /*if(growproc(n) < 0)
+    return -1;*/
   return addr;
 }
 

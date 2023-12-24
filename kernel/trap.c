@@ -65,6 +65,42 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if(r_scause() == 13 || r_scause() == 15) { 
+    char *pa;
+    uint64 va = r_stval();
+    
+    // if va higher than size or below the user stack, kill it
+    if(va >= p->sz){
+      printf("usertrap(): invalid va=%p higher than p->sz=%p\n",va, p->sz);
+      p->killed = 1;
+      goto end;
+    }
+    if(va < PGROUNDUP(p->trapframe->sp)) { 
+      printf("usertrap(): invalid va=%p below the user stack sp=%p\n",va, p->trapframe->sp);
+      p->killed = 1;
+      goto end;
+    }
+
+    // alloc physical pages
+    if((pa = kalloc()) != 0){
+      uint64 va = PGROUNDDOWN(r_stval());   // get address
+      memset(pa, 0, PGSIZE);
+      
+      // page table mapping
+      if(mappages(p->pagetable, va, PGSIZE, (uint64)pa, PTE_W|PTE_R|PTE_U) != 0) {
+        // page table mapping faild
+        kfree(pa);
+        printf("usertrap(): mappages() failed\n");
+        p->killed = 1;
+
+	goto end;
+      }
+    } else {    // alloc page table failed
+      printf("usertrap(): kalloc() failed\n");
+      p->killed = 1;
+
+      goto end;
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
@@ -73,6 +109,7 @@ usertrap(void)
     p->killed = 1;
   }
 
+end:
   if(p->killed)
     exit(-1);
 
